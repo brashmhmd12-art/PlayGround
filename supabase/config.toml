@@ -25,3 +25,11 @@ verify_jwt = true
 [functions.get-review]
 enabled = true
 verify_jwt = true
+
+[functions.run-scheduler]
+enabled = true
+verify_jwt = false
+
+[functions.admin-force-logout]
+enabled = true
+verify_jwt = true

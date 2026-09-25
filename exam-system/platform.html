@@ -130,6 +130,10 @@ async function route(){
     PROFILE=p||null;
     if(!PROFILE||!PROFILE.is_active){await SB.auth.signOut();ME=null;
       if(v!=="auth")return viewAuth("الحساب غير موجود أو بانتظار التفعيل من الإدارة.");}
+    else if(PROFILE.forced_logout_at&&ME.last_sign_in_at&&
+      new Date(PROFILE.forced_logout_at)>new Date(ME.last_sign_in_at)){
+      await SB.auth.signOut();ME=null;PROFILE=null;
+      if(v!=="auth")return viewAuth("قامت الإدارة بإنهاء جلسات الدخول. سجل الدخول مجددا.");}
   }
   if(v==="auth")return viewAuth();
   if(v==="signup")return viewSignup();
@@ -400,6 +404,7 @@ async function viewAdmin(tab){
     <td><button class="btn btn-secondary btn-sm" onclick="editStu('${p.id}','${esc(p.full_name)}','${esc(p.student_no||"")}')">تعديل</button>
     <button class="btn btn-secondary btn-sm" onclick="activateStu('${p.id}',${!p.is_active})">${p.is_active?"تعطيل":"تفعيل"}</button>
     <button class="btn btn-secondary btn-sm" onclick="resetPw('${esc(p.email||"")}')">إعادة كلمة المرور</button>
+    <button class="btn btn-secondary btn-sm" onclick="forceLogout('${p.id}')">إنهاء الجلسات</button>
     <button class="btn btn-danger btn-sm" onclick="delStu('${p.id}')">حذف</button></td></tr>`).join("")}</table>`;
   }
   if(ATAB==="exams"){
@@ -450,6 +455,7 @@ async function editStu(id,nm,no){
   await SB.from("profiles").update({full_name:n,student_no:s}).eq("id",id);toast("تم التحديث");viewAdmin("students")}
 async function delStu(id){if(!confirm("حذف ناعم لحساب الطالب؟ يمكن التراجع من قاعدة البيانات."))return;await SB.from("profiles").update({deleted_at:new Date().toISOString(),is_active:false}).eq("id",id);toast("تم الحذف");viewAdmin("students")}
 async function resetPw(email){if(!email){toast("لا بريد مسجل");return}const {error}=await SB.auth.resetPasswordForEmail(email);toast(error?"تعذر الإرسال":"تم إرسال رابط إعادة التعيين لبريد الطالب")}
+async function forceLogout(id){if(!confirm("إنهاء جميع جلسات هذا الطالب؟ سيحتاج لتسجيل الدخول مجددا."))return;try{await fn("admin-force-logout",{user_id:id});toast("تم إنهاء الجلسات")}catch(e){toast(e.message)}}
 async function chPw(){const a=$("np1").value,b=$("np2").value;if(a.length<8||a!==b){toast("كلمة المرور 8 أحرف على الأقل ومتطابقة");return}const {error}=await SB.auth.updateUser({password:a});toast(error?error.message:"تم تحديث كلمة المرور")}
 function unlink(){localStorage.removeItem(CFGKEY);location.hash="#/home";location.reload()}
 async function exportAll(){
