@@ -6,6 +6,7 @@
 //  3) one-hour reminders for upcoming exams (once per exam)
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { adminClient, json, audit } from "../_shared/db.ts";
+import { autoGrade, SnapQ, Given } from "../_shared/grade.ts";
 
 serve(async (req) => {
   const secret = Deno.env.get("SCHEDULER_SECRET") || "";
@@ -40,36 +41,13 @@ serve(async (req) => {
     .eq("status", "in_progress").lte("server_deadline", iso).limit(50);
   for (const att of over || []) {
     const exam = (att as { exams: Record<string, unknown> }).exams;
-    const snap = att.question_snapshot as {
-      id: string; qtype: string; mark: number;
-      options: { id: string; is_correct: boolean }[];
-    }[];
+    const snap = att.question_snapshot as SnapQ[];
     const { data: ansRows } = await db.from("answers").select("*").eq("attempt_id", att.id);
-    const byQ: Record<string, unknown> = {};
+    const byQ: Record<string, Given> = {};
     (ansRows || []).forEach((a: { question_id: string; answer_json: unknown }) => {
-      byQ[a.question_id] = a.answer_json;
+      byQ[a.question_id] = a.answer_json as Given;
     });
-    let auto = 0, correct = 0, wrong = 0, unanswered = 0;
-    const manual: { question_id: string; max_mark: number }[] = [];
-    for (const q of snap) {
-      const a = byQ[q.id] as { option_id?: string; value?: string; option_ids?: string[] } | undefined;
-      if (q.qtype === "written") {
-        manual.push({ question_id: q.id, max_mark: Number(q.mark) });
-        if (!a) unanswered++;
-        continue;
-      }
-      if (!a) { unanswered++; continue; }
-      let ok = false;
-      if (q.qtype === "mcq" || q.qtype === "tf") {
-        const right = q.options.find((o) => o.is_correct);
-        ok = !!right && (a.option_id === right.id || a.value === right.id);
-      } else if (q.qtype === "multi") {
-        const rs = new Set(q.options.filter((o) => o.is_correct).map((o) => o.id));
-        const gs = new Set(a.option_ids || []);
-        ok = rs.size > 0 && rs.size === gs.size && [...rs].every((x) => gs.has(x));
-      }
-      if (ok) { auto += Number(q.mark); correct++; } else wrong++;
-    }
+    const { auto, correct, wrong, unanswered, manual } = autoGrade(snap, byQ);
     const total = snap.reduce((s, q) => s + Number(q.mark), 0);
     const status = manual.length ? "grading" : "graded";
     await db.from("attempts").update({ status, submitted_at: iso, timed_out: true }).eq("id", att.id);

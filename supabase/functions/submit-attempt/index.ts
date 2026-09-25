@@ -5,11 +5,7 @@
 // Idempotent via Idempotency-Key header / idempotency_key body.
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { adminClient, caller, json, audit } from "../_shared/db.ts";
-
-type Q = {
-  id: string; qtype: string; mark: number;
-  options: { id: string; is_correct: boolean }[];
-};
+import { autoGrade, checkRate, SnapQ, Given } from "../_shared/grade.ts";
 
 serve(async (req) => {
   if (req.method !== "POST") return json({ error: "method not allowed" }, 405);
@@ -21,6 +17,8 @@ serve(async (req) => {
   const idem = req.headers.get("Idempotency-Key") || body.idempotency_key || null;
   const db = adminClient();
   const now = new Date();
+  if (!(await checkRate(db, "submit:" + user.id + ":" + attempt_id, 10, 60)))
+    return json({ error: "rate_limited" }, 429);
 
   const { data: att } = await db.from("attempts").select("*").eq("id", attempt_id).maybeSingle();
   if (!att || att.student_id !== user.id)
@@ -35,42 +33,13 @@ serve(async (req) => {
 
   const timedOut = new Date(att.server_deadline) < now;
   const { data: exam } = await db.from("exams").select("*").eq("id", att.exam_id).single();
-  const snap = att.question_snapshot as Q[];
+  const snap = att.question_snapshot as SnapQ[];
   const { data: ansRows } = await db.from("answers").select("*").eq("attempt_id", attempt_id);
-  const ansByQ: Record<string, { answer_json: unknown }> = {};
+  const byQ: Record<string, Given> = {};
   (ansRows || []).forEach((a: { question_id: string; answer_json: unknown }) => {
-    ansByQ[a.question_id] = { answer_json: a.answer_json };
+    byQ[a.question_id] = a.answer_json as Given;
   });
-
-  let auto = 0, correct = 0, wrong = 0, unanswered = 0;
-  const manual: { question_id: string; max_mark: number }[] = [];
-
-  for (const q of snap) {
-    const a = ansByQ[q.id]?.answer_json as {
-      option_id?: string; value?: string; option_ids?: string[];
-    } | undefined;
-    if (q.qtype === "written") {
-      manual.push({ question_id: q.id, max_mark: Number(q.mark) });
-      if (!a) unanswered++;
-      continue;
-    }
-    if (!a) { unanswered++; continue; }
-    let ok = false;
-    if (q.qtype === "mcq") {
-      const right = q.options.find((o) => o.is_correct);
-      ok = !!right && a.option_id === right.id;
-    } else if (q.qtype === "tf") {
-      const right = q.options.find((o) => o.is_correct);
-      ok = !!right && (a.value === right.id || a.option_id === right.id);
-    } else if (q.qtype === "multi") {
-      const rightSet = new Set(q.options.filter((o) => o.is_correct).map((o) => o.id));
-      const gotSet = new Set(a.option_ids || []);
-      ok = rightSet.size > 0 && rightSet.size === gotSet.size &&
-        [...rightSet].every((x) => gotSet.has(x)); // exact match; partial credit = future
-    }
-    if (ok) { auto += Number(q.mark); correct++; }
-    else wrong++;
-  }
+  const { auto, correct, wrong, unanswered, manual } = autoGrade(snap, byQ);
 
   const status = manual.length ? "grading" : "graded";
   await db.from("attempts").update({

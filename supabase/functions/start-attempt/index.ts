@@ -4,6 +4,7 @@
 // Response questions are SANITIZED: NO is_correct ever leaves the server.
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { adminClient, caller, json, audit } from "../_shared/db.ts";
+import { checkRate } from "../_shared/grade.ts";
 
 const sha256 = async (s: string) => {
   const b = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s));
@@ -45,6 +46,8 @@ serve(async (req) => {
   const { exam_id, access_code, idempotency_key } = await req.json();
   const db = adminClient();
   const now = new Date();
+  if (!(await checkRate(db, "start:" + user.id, 20, 60)))
+    return json({ error: "rate_limited" }, 429);
 
   const { data: exam } = await db.from("exams").select("*").eq("id", exam_id).maybeSingle();
   if (!exam || exam.deleted_at || !["published", "active"].includes(exam.status))
@@ -53,7 +56,23 @@ serve(async (req) => {
     return json({ error: "exam has not started" }, 403);
   if (exam.ends_at && new Date(exam.ends_at) < now)
     return json({ error: "exam window closed" }, 403);
-  if (exam.access_code_hash) {
+  // audience groups: student must belong to an admitted group
+  if (exam.audience === "groups") {
+    const { data: prof } = await db.from("profiles").select("group_name")
+      .eq("id", user.id).maybeSingle();
+    const { data: acc } = await db.from("exam_access").select("*").eq("exam_id", exam_id);
+    const mine = (acc || []).filter((a: { group_name: string }) =>
+      a.group_name === (prof?.group_name || ""));
+    if (!mine.length) return json({ error: "not in audience" }, 403);
+    const needCode = mine.some((a: { access_code_hash: string | null }) => a.access_code_hash) ||
+      !!exam.access_code_hash;
+    if (needCode) {
+      const h = access_code ? await sha256(access_code) : "";
+      const ok = mine.some((a: { access_code_hash: string | null }) => a.access_code_hash === h) ||
+        (exam.access_code_hash && exam.access_code_hash === h);
+      if (!ok) return json({ error: "invalid access code" }, 403);
+    }
+  } else if (exam.access_code_hash) {
     if (!access_code || (await sha256(access_code)) !== exam.access_code_hash)
       return json({ error: "invalid access code" }, 403);
   }

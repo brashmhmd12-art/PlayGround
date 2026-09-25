@@ -2,6 +2,7 @@
 // server deadline, and newer-seq-wins (prevents stale overwrite after offline).
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { adminClient, caller, json } from "../_shared/db.ts";
+import { checkRate } from "../_shared/grade.ts";
 
 serve(async (req) => {
   if (req.method !== "POST") return json({ error: "method not allowed" }, 405);
@@ -10,6 +11,8 @@ serve(async (req) => {
 
   const { attempt_id, question_id, answer, seq } = await req.json();
   const db = adminClient();
+  if (!(await checkRate(db, "save:" + attempt_id, 120, 60)))
+    return json({ error: "rate_limited" }, 429);
 
   const { data: att } = await db.from("attempts").select(
     "id,student_id,status,server_deadline").eq("id", attempt_id).maybeSingle();
