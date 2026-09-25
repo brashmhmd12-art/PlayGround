@@ -1,7 +1,7 @@
 // start-attempt: student starts (or resumes) an exam attempt.
 // Enforces: ownership, exam state + time window, audience, access code,
 // max attempts, single active attempt. Deadline computed on SERVER time.
-// Response questions are SANITIZED: options shuffled per settings, NO is_correct.
+// Response questions are SANITIZED: NO is_correct ever leaves the server.
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { adminClient, caller, json, audit } from "../_shared/db.ts";
 
@@ -17,6 +17,24 @@ const shuffle = <T>(a: T[]): T[] => {
   }
   return r;
 };
+
+type FullQ = {
+  id: string; qtype: string; text: string; mark: number; image_url: string | null;
+  options: { id: string; text: string }[];
+};
+
+// strip correct answers + apply option shuffle
+function sanitize(full: FullQ[], order: string[], shuffleOpts: boolean): FullQ[] {
+  const byId: Record<string, FullQ> = {};
+  full.forEach((q) => {
+    const opts = shuffleOpts && q.qtype !== "written" ? shuffle(q.options) : q.options;
+    byId[q.id] = q.qtype === "written"
+      ? { id: q.id, qtype: q.qtype, text: q.text, mark: q.mark, image_url: q.image_url, options: [] }
+      : { id: q.id, qtype: q.qtype, text: q.text, mark: q.mark,
+          image_url: q.image_url, options: opts.map((o) => ({ id: o.id, text: o.text })) };
+  });
+  return order.map((id) => byId[id]).filter(Boolean);
+}
 
 serve(async (req) => {
   if (req.method !== "POST") return json({ error: "method not allowed" }, 405);
@@ -40,14 +58,19 @@ serve(async (req) => {
       return json({ error: "invalid access code" }, 403);
   }
 
-  // resume active attempt (same exam+student) — never a second parallel attempt
+  // resume active attempt — same deadline, sanitized questions rebuilt from snapshot
   const { data: active } = await db.from("attempts").select("*")
     .eq("exam_id", exam_id).eq("student_id", user.id).eq("status", "in_progress")
     .maybeSingle();
   if (active) {
+    const questions = sanitize(
+      active.question_snapshot as FullQ[], active.question_order as string[], exam.shuffle_options);
+    const { data: answers } = await db.from("answers").select("question_id,answer_json,seq")
+      .eq("attempt_id", active.id);
     await audit(db, { actor_id: user.id, action: "attempt.resume",
       entity: "attempts", entity_id: active.id });
-    return json({ attempt_id: active.id, resumed: true,
+    return json({ attempt_id: active.id, resumed: true, questions, answers: answers || [],
+      allow_back_navigation: exam.allow_back_navigation,
       server_deadline: active.server_deadline, server_now: now.toISOString() });
   }
 
@@ -56,7 +79,6 @@ serve(async (req) => {
   if ((count || 0) >= exam.max_attempts)
     return json({ error: "no attempts remaining" }, 403);
 
-  // build snapshot server-side (WITH correct answers — stored, never sent)
   const { data: links } = await db.from("exam_questions").select(
     "position,mark_override,question_bank(id,subject,unit,topic,difficulty,qtype,text,mark,explanation,image_url)")
     .eq("exam_id", exam_id).order("position");
@@ -71,9 +93,8 @@ serve(async (req) => {
     mark: l.mark_override ?? (l.question_bank as { mark: number }).mark,
     options: (opts || []).filter((o: { question_id: string }) =>
       o.question_id === (l.question_bank as { id: string }).id),
-  }));
-  const order = (exam.shuffle_questions ? shuffle(full.map((q) =>
-    (q as { id: string }).id)) : full.map((q) => (q as { id: string }).id));
+  })) as FullQ[];
+  const order = (exam.shuffle_questions ? shuffle(full.map((q) => q.id)) : full.map((q) => q.id));
 
   const deadline = new Date(now.getTime() + exam.duration_min * 60000).toISOString();
   const key = idempotency_key ||
@@ -84,37 +105,23 @@ serve(async (req) => {
     server_deadline: deadline, idempotency_key: key,
   }).select().single();
   if (insErr) {
-    // idempotent retry: same key returns existing attempt
     const { data: dup } = await db.from("attempts").select("*")
       .eq("idempotency_key", key).maybeSingle();
-    if (dup) return json({ attempt_id: dup.id, resumed: true,
-      server_deadline: dup.server_deadline, server_now: now.toISOString() });
+    if (dup) {
+      const questions = sanitize(dup.question_snapshot as FullQ[],
+        dup.question_order as string[], exam.shuffle_options);
+      return json({ attempt_id: dup.id, resumed: true, questions, answers: [],
+        allow_back_navigation: exam.allow_back_navigation,
+        server_deadline: dup.server_deadline, server_now: now.toISOString() });
+    }
     return json({ error: "could not start attempt" }, 500);
   }
-
-  // sanitized view for the student
-  const byId: Record<string, {
-    id: string; qtype: string; text: string; mark: number; image_url: string | null;
-    options: { id: string; text: string }[];
-  }> = {};
-  full.forEach((q: {
-    id: string; qtype: string; text: string; mark: number; image_url: string | null;
-    options: { id: string; text: string }[];
-  }) => {
-    const o = exam.shuffle_options && q.qtype !== "written"
-      ? shuffle(q.options) : q.options;
-    byId[q.id] = q.qtype === "written"
-      ? { id: q.id, qtype: q.qtype, text: q.text, mark: q.mark,
-          image_url: q.image_url, options: [] }
-      : { id: q.id, qtype: q.qtype, text: q.text, mark: q.mark,
-          image_url: q.image_url, options: o.map((x) => ({ id: x.id, text: x.text })) };
-  });
-  const questions = order.map((id: string) => byId[id]);
 
   await audit(db, { actor_id: user.id, action: "attempt.start",
     entity: "attempts", entity_id: att.id,
     new_value: { exam_id, attempt_no: att.attempt_no } });
-  return json({ attempt_id: att.id, resumed: false, questions,
+  return json({ attempt_id: att.id, resumed: false,
+    questions: sanitize(full, order, exam.shuffle_options), answers: [],
     allow_back_navigation: exam.allow_back_navigation,
     server_deadline: deadline, server_now: now.toISOString() });
 });

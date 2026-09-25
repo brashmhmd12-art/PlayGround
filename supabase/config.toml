@@ -21,3 +21,7 @@ verify_jwt = true
 [functions.publish-result]
 enabled = true
 verify_jwt = true
+
+[functions.get-review]
+enabled = true
+verify_jwt = true

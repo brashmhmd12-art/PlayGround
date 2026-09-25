@@ -16,7 +16,8 @@
 1. من القائمة افتح SQL Editor.
 2. الصق كامل محتوى الملف `supabase/migrations/0001_schema.sql` ونفذه (Run).
 3. الصق كامل محتوى الملف `supabase/migrations/0002_rls.sql` ونفذه.
-4. تحقق من نجاح التنفيذ بدون أخطاء. أي خطأ يظهر لك انسخه وأرسله لي لأصلحه.
+4. الصق كامل محتوى الملف `supabase/migrations/0003_signup.sql` ونفذه.
+5. تحقق من نجاح التنفيذ بدون أخطاء. أي خطأ يظهر لك انسخه وأرسله لي لأصلحه.
 
 ## الخطوة 3: إنشاء حساب المشرف
 
@@ -41,6 +42,7 @@ supabase functions deploy submit-attempt
 supabase functions deploy grade-item
 supabase functions deploy complete-grading
 supabase functions deploy publish-result
+supabase functions deploy get-review
 ```
 
 مفتاح الخدمة (service_role) يبقى داخل بيئة الدوال فقط ولا يظهر في الواجهة أبدا.
