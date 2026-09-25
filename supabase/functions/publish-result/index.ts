@@ -1,13 +1,14 @@
 // publish-result: staff publishes / unpublishes a result.
 // Manual grade edits use grade-item (history kept); this only flips visibility.
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
-import { adminClient, caller, json, audit, TEACH } from "../_shared/db.ts";
+import { adminClient, caller, json, audit, TEACH, net } from "../_shared/db.ts";
 
 serve(async (req) => {
   if (req.method !== "POST") return json({ error: "method not allowed" }, 405);
   const { user, error } = await caller(req);
   if (!user) return json({ error }, 401);
   if (!TEACH.includes(user.role)) return json({ error: "teachers only" }, 403);
+  const N = net(req);
 
   const { result_id, published } = await req.json();
   const db = adminClient();
@@ -31,6 +32,6 @@ serve(async (req) => {
     });
   }
   await audit(db, { actor_id: user.id, action: published ? "result.publish" : "result.unpublish",
-    entity: "results", entity_id: result_id });
+    entity: "results", entity_id: result_id, ip: N.ip, user_agent: N.user_agent });
   return json({ ok: true, published: !!published });
 });

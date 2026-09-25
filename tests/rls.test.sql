@@ -29,6 +29,29 @@ grant all privileges on all tables in schema public to tester;
 grant all privileges on table auth.users to tester;
 
 -- ---------- fixtures (superuser bypasses RLS, like service_role) ----------
+-- idempotent reruns first
+delete from notifications where user_id in
+  ('11111111-1111-1111-1111-111111111111','44444444-4444-4444-4444-444444444444');
+delete from audit_logs where actor_id in
+  ('11111111-1111-1111-1111-111111111111','22222222-2222-2222-2222-222222222222',
+   '33333333-3333-3333-3333-333333333333','44444444-4444-4444-4444-444444444444',
+   '55555555-5555-5555-5555-555555555555');
+delete from results where attempt_id in
+  ('cccccccc-cccc-cccc-cccc-cccccccccccc','dddddddd-dddd-dddd-dddd-dddddddddddd');
+delete from attempts where id in
+  ('cccccccc-cccc-cccc-cccc-cccccccccccc','dddddddd-dddd-dddd-dddd-dddddddddddd');
+delete from exam_questions where exam_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
+delete from question_options where question_id = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb';
+delete from question_bank where id = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb';
+delete from exams where id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
+delete from profiles where id in
+  ('11111111-1111-1111-1111-111111111111','22222222-2222-2222-2222-222222222222',
+   '33333333-3333-3333-3333-333333333333','44444444-4444-4444-4444-444444444444',
+   '55555555-5555-5555-5555-555555555555','66666666-6666-6666-6666-666666666666');
+delete from auth.users where id in
+  ('11111111-1111-1111-1111-111111111111','22222222-2222-2222-2222-222222222222',
+   '33333333-3333-3333-3333-333333333333','44444444-4444-4444-4444-444444444444',
+   '55555555-5555-5555-5555-555555555555','66666666-6666-6666-6666-666666666666');
 insert into auth.users(id, email) values
   ('11111111-1111-1111-1111-111111111111', 'admin@x.com'),
   ('22222222-2222-2222-2222-222222222222', 'teacher@x.com'),

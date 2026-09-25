@@ -4,7 +4,7 @@
 // unless settings allow immediate display AND no manual grading is pending.
 // Idempotent via Idempotency-Key header / idempotency_key body.
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
-import { adminClient, caller, json, audit } from "../_shared/db.ts";
+import { adminClient, caller, json, audit, net } from "../_shared/db.ts";
 import { autoGrade, checkRate, SnapQ, Given } from "../_shared/grade.ts";
 
 serve(async (req) => {
@@ -17,6 +17,7 @@ serve(async (req) => {
   const idem = req.headers.get("Idempotency-Key") || body.idempotency_key || null;
   const db = adminClient();
   const now = new Date();
+  const N = net(req);
   if (!(await checkRate(db, "submit:" + user.id + ":" + attempt_id, 10, 60)))
     return json({ error: "rate_limited" }, 429);
 
@@ -79,7 +80,7 @@ serve(async (req) => {
     });
   }
   await audit(db, { actor_id: user.id, action: timedOut ? "attempt.auto_submit" : "attempt.submit",
-    entity: "attempts", entity_id: attempt_id,
+    entity: "attempts", entity_id: attempt_id, ip: N.ip, user_agent: N.user_agent,
     new_value: { auto_score: auto, status } });
   return json({ submitted: true, timed_out, needs_manual: manual.length > 0,
     auto_score: auto, total, result_id: result.id, published: publishNow });

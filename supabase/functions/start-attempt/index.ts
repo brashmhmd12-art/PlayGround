@@ -3,7 +3,7 @@
 // max attempts, single active attempt. Deadline computed on SERVER time.
 // Response questions are SANITIZED: NO is_correct ever leaves the server.
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
-import { adminClient, caller, json, audit } from "../_shared/db.ts";
+import { adminClient, caller, json, audit, net } from "../_shared/db.ts";
 import { checkRate } from "../_shared/grade.ts";
 
 const sha256 = async (s: string) => {
@@ -42,6 +42,7 @@ serve(async (req) => {
   const { user, error } = await caller(req);
   if (!user) return json({ error }, 401);
   if (user.role !== "student") return json({ error: "students only" }, 403);
+  const N = net(req);
 
   const { exam_id, access_code, idempotency_key } = await req.json();
   const db = adminClient();
@@ -87,7 +88,7 @@ serve(async (req) => {
     const { data: answers } = await db.from("answers").select("question_id,answer_json,seq")
       .eq("attempt_id", active.id);
     await audit(db, { actor_id: user.id, action: "attempt.resume",
-      entity: "attempts", entity_id: active.id });
+      entity: "attempts", entity_id: active.id, ip: N.ip, user_agent: N.user_agent });
     return json({ attempt_id: active.id, resumed: true, questions, answers: answers || [],
       allow_back_navigation: exam.allow_back_navigation,
       server_deadline: active.server_deadline, server_now: now.toISOString() });
@@ -137,7 +138,7 @@ serve(async (req) => {
   }
 
   await audit(db, { actor_id: user.id, action: "attempt.start",
-    entity: "attempts", entity_id: att.id,
+    entity: "attempts", entity_id: att.id, ip: N.ip, user_agent: N.user_agent,
     new_value: { exam_id, attempt_no: att.attempt_no } });
   return json({ attempt_id: att.id, resumed: false,
     questions: sanitize(full, order, exam.shuffle_options), answers: [],
