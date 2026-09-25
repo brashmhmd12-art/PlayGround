@@ -2,13 +2,13 @@
 // final = auto + manual (server-computed). Publishes per exam settings
 // and notifies the student. Idempotent.
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
-import { adminClient, caller, json, audit, STAFF } from "../_shared/db.ts";
+import { adminClient, caller, json, audit, TEACH } from "../_shared/db.ts";
 
 serve(async (req) => {
   if (req.method !== "POST") return json({ error: "method not allowed" }, 405);
   const { user, error } = await caller(req);
   if (!user) return json({ error }, 401);
-  if (!STAFF.includes(user.role)) return json({ error: "staff only" }, 403);
+  if (!TEACH.includes(user.role)) return json({ error: "teachers only" }, 403);
 
   const { attempt_id, publish } = await req.json();
   const db = adminClient();

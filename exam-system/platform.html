@@ -365,7 +365,7 @@ async function viewResult(rid){
 }
 
 /* ============ admin ============ */
-let ATAB="dash",BQ=[],EDITEX=null,REMOVED=[];
+let ATAB="dash",BQ=[],EDITEX=null,REMOVED=[],RESSORT="new";
 async function viewAdmin(tab){
   ATAB=tab||ATAB;
   const tabs=[["dash","المؤشرات"],["students","الطلاب"],["exams","الامتحانات"],["builder","إنشاء امتحان"],["bank","بنك الأسئلة"],["grading","التصحيح"],["results","النتائج"],["audit","سجل التدقيق"],["settings","الإعدادات"]];
@@ -424,12 +424,14 @@ async function viewAdmin(tab){
   }
   if(ATAB==="results"){
     const {data:rs}=await SB.from("results").select("*,attempts!inner(exam_id,student_id,exams!inner(title),profiles!attempts_student_id_fkey(full_name))").order("created_at",{ascending:false}).limit(200);
-    const rows=(rs||[]).map(r=>({name:r.attempts.profiles?r.attempts.profiles.full_name:"",exam:r.attempts.exams?r.attempts.exams.title:"",s:r.final_score,pub:r.published,pass:r.passed,id:r.id}));
+    const rows=(rs||[]).map(r=>({name:r.attempts.profiles?r.attempts.profiles.full_name:"",exam:r.attempts.exams?r.attempts.exams.title:"",s:r.final_score,pub:r.published,pass:r.passed,id:r.id,ts:r.created_at}));
+    if(RESSORT==="high")rows.sort((a,b)=>b.s-a.s);else if(RESSORT==="low")rows.sort((a,b)=>a.s-b.s);else if(RESSORT==="name")rows.sort((a,b)=>String(a.name).localeCompare(String(b.name),"ar"));
     const pub=rows.filter(r=>r.pub);
     const bins=[0,0,0,0,0];pub.forEach(r=>{const v=Number(r.s);bins[v<60?0:v<70?1:v<80?2:v<90?3:4]++});
     const mx=Math.max(1,...bins);
     const avg=pub.length?(pub.reduce((a,r)=>a+Number(r.s),0)/pub.length).toFixed(1):"—";
     B.innerHTML=`<label>بحث</label><input oninput="filterRows('resTbl',this.value)" placeholder="اسم الطالب أو الامتحان">
+    <label>ترتيب</label><select id="resSort" onchange="RESSORT=this.value;viewAdmin('results')" style="max-width:220px"><option value="new" ${RESSORT==="new"?"selected":""}>الأحدث</option><option value="high" ${RESSORT==="high"?"selected":""}>الأعلى درجة</option><option value="low" ${RESSORT==="low"?"selected":""}>الأدنى درجة</option><option value="name" ${RESSORT==="name"?"selected":""}>اسم الطالب</option></select>
     <p class="sub">المتوسط: <b>${avg}</b> — أعلى: <b>${pub.length?Math.max(...pub.map(r=>Number(r.s))):"—"}</b> — أدنى: <b>${pub.length?Math.min(...pub.map(r=>Number(r.s))):"—"}</b> — ناجحون: <b>${pub.filter(r=>r.pass).length}</b> — راسبون: <b>${pub.filter(r=>!r.pass).length}</b></p>
     <div style="display:flex;gap:12px;align-items:flex-end;margin:12px 0">${["أقل من 60","60-69","70-79","80-89","90-100"].map((l,i)=>`<div style="text-align:center"><div style="width:48px;background:var(--primary);border-radius:6px 6px 0 0;height:${Math.round(bins[i]/mx*90)+4}px"></div><small>${l}<br><b>${bins[i]}</b></small></div>`).join("")}</div>
     <table id="resTbl"><tr><th>الطالب</th><th>الامتحان</th><th>النهائية</th><th>الحالة</th><th></th></tr>

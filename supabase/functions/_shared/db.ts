@@ -45,3 +45,4 @@ export async function audit(db: ReturnType<typeof adminClient>, e: {
 
 export const STAFF = ["super_admin", "admin", "teacher", "grader"];
 export const ADMIN = ["super_admin", "admin"];
+export const TEACH = ["super_admin", "admin", "teacher"];
