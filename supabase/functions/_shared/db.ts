@@ -46,3 +46,11 @@ export async function audit(db: ReturnType<typeof adminClient>, e: {
 export const STAFF = ["super_admin", "admin", "teacher", "grader"];
 export const ADMIN = ["super_admin", "admin"];
 export const TEACH = ["super_admin", "admin", "teacher"];
+
+// Real client network data from the edge (Supabase requirement §20: IP/device).
+export function net(req: Request) {
+  return {
+    ip: (req.headers.get("x-forwarded-for") || "").split(",")[0].trim(),
+    user_agent: req.headers.get("user-agent") || "",
+  };
+}

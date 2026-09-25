@@ -4,13 +4,14 @@
 // Honest note: already-issued JWTs stay technically valid until expiry (~1h),
 // but they become useless: no API action and no app screen will accept them.
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
-import { adminClient, caller, json, audit, ADMIN } from "../_shared/db.ts";
+import { adminClient, caller, json, audit, ADMIN, net } from "../_shared/db.ts";
 
 serve(async (req) => {
   if (req.method !== "POST") return json({ error: "method not allowed" }, 405);
   const { user, error } = await caller(req);
   if (!user) return json({ error }, 401);
   if (!ADMIN.includes(user.role)) return json({ error: "admins only" }, 403);
+  const N = net(req);
 
   const { user_id } = await req.json();
   if (!user_id || user_id === user.id)
@@ -23,6 +24,6 @@ serve(async (req) => {
   await db.from("notifications").insert({ user_id, type: "security",
     title: "تم إنهاء جلساتك", body: "قامت الإدارة بإنهاء جميع جلسات الدخول. سجل الدخول مجددا." });
   await audit(db, { actor_id: user.id, action: "auth.force_logout",
-    entity: "profiles", entity_id: user_id });
+    entity: "profiles", entity_id: user_id, ip: N.ip, user_agent: N.user_agent });
   return json({ ok: true });
 });

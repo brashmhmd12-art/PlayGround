@@ -27,9 +27,15 @@ psql -d examtest -v ON_ERROR_STOP=1 -f tests/rls.test.sql
 
 ## خارج النطاق هنا (يتطلب بيئة staging بمشروع حقيقي)
 
-- تفويض الدوال الحافية (مثال: طالب يستدعي grade-item، مصحح يستدعي publish).
-- رحلة كاملة: بدء، حفظ متزامن، تسليم مزدوج، انتهاء وقت، استئناف.
-- Brute Force وCSRF وXSS على الواجهة.
-- اختبار الحمل والتزامن.
+شغل `tests/e2e.staging.mjs` بحسابات تجريبية على مشروع staging فقط:
 
-هذه تُنفذ بعد ربط المشروع الحقيقي حسب مصفوفة `docs/07-reviews-and-decision.md`.
+```
+SUPABASE_URL=... ANON_KEY=... STU_EMAIL=... STU_PASS=... ADM_EMAIL=... ADM_PASS=... node tests/e2e.staging.mjs
+```
+
+يتحقق من: إخفاء الخيارات عن الطالب، رفض grade-item وpublish وforce-logout
+للطالب، رفض الامتحان الوهمي، قفل المجدول بدون سر، رفض المراجعة الوهمية،
+قراءة التدقيق للإدارة وحجبه عن الطالب، ورفض إنشاء امتحان مباشر.
+
+رحلة كاملة (بدء، حفظ متزامن، تسليم مزدوج، انتهاء وقت، استئناف) وBrute Force
+وCSRF وXSS واختبار الحمل تنفذ يدويا حسب مصفوفة `docs/07-reviews-and-decision.md`.
