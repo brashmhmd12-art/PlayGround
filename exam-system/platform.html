@@ -399,9 +399,9 @@ async function viewAdmin(tab){
     <label>بحث بالاسم أو الرقم أو البريد</label><input id="qStu" oninput="filterRows('stuTbl',this.value)" placeholder="بحث">
     <h3>بانتظار التفعيل (${pend.length})</h3>
     ${pend.map(p=>`<div class="row"><div><b>${esc(p.full_name)}</b><br><small>${esc(p.email||"")}</small></div><button class="btn btn-success btn-sm" onclick="activateStu('${p.id}',true)">تفعيل</button></div>`).join("")||'<p class="sub">لا يوجد.</p>'}
-    <h3>الطلاب (${(rows||[]).filter(r=>r.is_active).length})</h3><table id="stuTbl"><tr><th>الاسم</th><th>البريد</th><th>الرقم</th><th>الحالة</th><th>إجراءات</th></tr>
-    ${(rows||[]).filter(r=>r.is_active).map(p=>`<tr><td>${esc(p.full_name)}</td><td dir="ltr">${esc(p.email||"")}</td><td>${esc(p.student_no||"")}</td><td>${p.is_active?'<span class="tag t-ok">نشط</span>':'<span class="tag t-muted">معطل</span>'}</td>
-    <td><button class="btn btn-secondary btn-sm" onclick="editStu('${p.id}','${esc(p.full_name)}','${esc(p.student_no||"")}')">تعديل</button>
+    <h3>الطلاب (${(rows||[]).filter(r=>r.is_active).length})</h3><table id="stuTbl"><tr><th>الاسم</th><th>البريد</th><th>الرقم</th><th>المجموعة</th><th>الحالة</th><th>إجراءات</th></tr>
+    ${(rows||[]).filter(r=>r.is_active).map(p=>`<tr><td>${esc(p.full_name)}</td><td dir="ltr">${esc(p.email||"")}</td><td>${esc(p.student_no||"")}</td><td>${esc(p.group_name||"")}</td><td>${p.is_active?'<span class="tag t-ok">نشط</span>':'<span class="tag t-muted">معطل</span>'}</td>
+    <td><button class="btn btn-secondary btn-sm" onclick="editStu('${p.id}','${esc(p.full_name)}','${esc(p.student_no||"")}','${esc(p.group_name||"")}')">تعديل</button>
     <button class="btn btn-secondary btn-sm" onclick="activateStu('${p.id}',${!p.is_active})">${p.is_active?"تعطيل":"تفعيل"}</button>
     <button class="btn btn-secondary btn-sm" onclick="resetPw('${esc(p.email||"")}')">إعادة كلمة المرور</button>
     <button class="btn btn-secondary btn-sm" onclick="forceLogout('${p.id}')">إنهاء الجلسات</button>
@@ -426,9 +426,12 @@ async function viewAdmin(tab){
     const {data:rs}=await SB.from("results").select("*,attempts!inner(exam_id,student_id,exams!inner(title),profiles!attempts_student_id_fkey(full_name))").order("created_at",{ascending:false}).limit(200);
     const rows=(rs||[]).map(r=>({name:r.attempts.profiles?r.attempts.profiles.full_name:"",exam:r.attempts.exams?r.attempts.exams.title:"",s:r.final_score,pub:r.published,pass:r.passed,id:r.id}));
     const pub=rows.filter(r=>r.pub);
+    const bins=[0,0,0,0,0];pub.forEach(r=>{const v=Number(r.s);bins[v<60?0:v<70?1:v<80?2:v<90?3:4]++});
+    const mx=Math.max(1,...bins);
     const avg=pub.length?(pub.reduce((a,r)=>a+Number(r.s),0)/pub.length).toFixed(1):"—";
     B.innerHTML=`<label>بحث</label><input oninput="filterRows('resTbl',this.value)" placeholder="اسم الطالب أو الامتحان">
     <p class="sub">المتوسط: <b>${avg}</b> — أعلى: <b>${pub.length?Math.max(...pub.map(r=>Number(r.s))):"—"}</b> — أدنى: <b>${pub.length?Math.min(...pub.map(r=>Number(r.s))):"—"}</b> — ناجحون: <b>${pub.filter(r=>r.pass).length}</b> — راسبون: <b>${pub.filter(r=>!r.pass).length}</b></p>
+    <div style="display:flex;gap:12px;align-items:flex-end;margin:12px 0">${["أقل من 60","60-69","70-79","80-89","90-100"].map((l,i)=>`<div style="text-align:center"><div style="width:48px;background:var(--primary);border-radius:6px 6px 0 0;height:${Math.round(bins[i]/mx*90)+4}px"></div><small>${l}<br><b>${bins[i]}</b></small></div>`).join("")}</div>
     <table id="resTbl"><tr><th>الطالب</th><th>الامتحان</th><th>النهائية</th><th>الحالة</th><th></th></tr>
     ${rows.map(r=>`<tr><td>${esc(r.name)}</td><td>${esc(r.exam)}</td><td><b>${r.s}</b></td><td>${r.pub?'<span class="tag t-ok">منشورة</span>':'<span class="tag t-warn">غير منشورة</span>'}</td><td><button class="btn btn-secondary btn-sm" onclick="pubRes('${r.id}',${!r.pub})">${r.pub?"إخفاء":"نشر"}</button></td></tr>`).join("")}</table>`;
   }
@@ -450,9 +453,10 @@ async function viewAdmin(tab){
 function filterRows(tid,q){q=q.trim();document.querySelectorAll("#"+tid+" tr").forEach((tr,i)=>{if(!i)return;tr.style.display=tr.textContent.includes(q)?"":"none"})}
 function auditPage(p){$("abody").dataset.p=p;viewAdmin("audit")}
 async function activateStu(id,on){await SB.from("profiles").update({is_active:on}).eq("id",id);await SB.from("audit_logs").insert({actor_id:ME.id,action:on?"student.activate":"student.deactivate",entity:"profiles",entity_id:id});toast("تم");viewAdmin("students")}
-async function editStu(id,nm,no){
+async function editStu(id,nm,no,grp){
   const n=prompt("الاسم الكامل:",nm);if(n===null)return;const s=prompt("الرقم:",no||"");if(s===null)return;
-  await SB.from("profiles").update({full_name:n,student_no:s}).eq("id",id);toast("تم التحديث");viewAdmin("students")}
+  const g=prompt("المجموعة (مثال: شعبة أ):",grp||"");if(g===null)return;
+  await SB.from("profiles").update({full_name:n,student_no:s,group_name:g}).eq("id",id);toast("تم التحديث");viewAdmin("students")}
 async function delStu(id){if(!confirm("حذف ناعم لحساب الطالب؟ يمكن التراجع من قاعدة البيانات."))return;await SB.from("profiles").update({deleted_at:new Date().toISOString(),is_active:false}).eq("id",id);toast("تم الحذف");viewAdmin("students")}
 async function resetPw(email){if(!email){toast("لا بريد مسجل");return}const {error}=await SB.auth.resetPasswordForEmail(email);toast(error?"تعذر الإرسال":"تم إرسال رابط إعادة التعيين لبريد الطالب")}
 async function forceLogout(id){if(!confirm("إنهاء جميع جلسات هذا الطالب؟ سيحتاج لتسجيل الدخول مجددا."))return;try{await fn("admin-force-logout",{user_id:id});toast("تم إنهاء الجلسات")}catch(e){toast(e.message)}}
@@ -502,8 +506,11 @@ function renderBuilder(B){
   <div><label>ترتيب الأسئلة عشوائي</label><select id="fShQ"><option value="0">ثابت</option><option value="1" ${EDITEX&&EDITEX.shuffle_questions?"selected":""}>عشوائي</option></select></div>
   <div><label>ترتيب الخيارات عشوائي</label><select id="fShO"><option value="0">ثابت</option><option value="1" ${EDITEX&&EDITEX.shuffle_options?"selected":""}>عشوائي</option></select></div>
   <div><label>الرجوع للسابق</label><select id="fBack"><option value="1">مسموح</option><option value="0" ${EDITEX&&!EDITEX.allow_back_navigation?"selected":""}>ممنوع</option></select></div>
-  <div><label>رمز الدخول (اختياري)</label><input id="fCode" placeholder="اتركه فارغا للجميع"></div>
-  <div><label>الجمهور</label><select id="fAud"><option value="all">كل الطلاب</option></select></div></div>
+  <div><label>رمز الدخول العام (اختياري)</label><input id="fCode" placeholder="اتركه فارغا للجميع"></div>
+  <div><label>الجمهور</label><select id="fAud" onchange="$('grpRow').style.display=this.value==='groups'?'grid':'none'"><option value="all">كل الطلاب</option><option value="groups" ${EDITEX&&EDITEX.audience==="groups"?"selected":""}>مجموعة محددة</option></select></div></div>
+  <div class="grid2" id="grpRow" style="display:${EDITEX&&EDITEX.audience==="groups"?"grid":"none"}">
+  <div><label>اسم المجموعة المسموحة</label><input id="fGroup" value="${esc(EDITEX&&EDITEX._acc?EDITEX._acc.group_name:"")}" placeholder="مثال: شعبة أ"></div>
+  <div><label>رمز خاص بالمجموعة (اختياري)</label><input id="fGroupCode" placeholder="يضاف فوق الرمز العام"></div></div></div>
   <h3>الأسئلة (${BQ.length})</h3><div id="bList"></div>
   <div class="toolbar"><button class="btn btn-secondary btn-sm" onclick="bAdd('mcq')">اختيار من متعدد</button>
   <button class="btn btn-secondary btn-sm" onclick="bAdd('tf')">صح وخطأ</button>
@@ -521,17 +528,18 @@ function drawBQ(){
   const L=$("bList");if(!L)return;
   L.innerHTML=BQ.map((q,i)=>{
     const t={mcq:"اختيار",tf:"صح/خطأ",multi:"متعدد",written:"تحريري"}[q.qtype];
-    let h=`<div class="q ${q.qtype}"><b>${i+1}. [${t}] (${q.mark})</b> ${q.bank_id?'<span class="tag t-info">من البنك</span>':""}
+    let h=`<div class="q ${q.qtype}" draggable="true" ondragstart="bDrag(event,${i})" ondragover="event.preventDefault()" ondrop="bDrop(event,${i})"><b>${i+1}. [${t}] (${q.mark})</b> ${q.bank_id?'<span class="tag t-info">من البنك</span>':""} <span class="tag t-muted">اسحب لإعادة الترتيب</span>
     <div class="toolbar"><button class="btn btn-secondary btn-sm" ${i===0?"disabled":""} onclick="bMove(${i},-1)">أعلى</button>
     <button class="btn btn-secondary btn-sm" ${i===BQ.length-1?"disabled":""} onclick="bMove(${i},1)">أسفل</button>
     <button class="btn btn-secondary btn-sm" onclick="bEdit(${i})">تحرير</button>
+    <button class="btn btn-secondary btn-sm" onclick="bDup(${i})">نسخ السؤال</button>
     <button class="btn btn-danger btn-sm" onclick="bDel(${i})">حذف</button></div>
     <div>${esc(q.text).slice(0,160)}</div></div>`;
     if(q._open){
       h=`<div class="q ${q.qtype}"><label>نص السؤال</label><textarea id="qT${i}">${esc(q.text)}</textarea>
       <div class="grid3"><div><label>العلامة</label><input id="qM${i}" type="number" min="0.5" step="0.5" value="${q.mark}"></div>
       <div><label>الصعوبة</label><select id="qD${i}">${[1,2,3,4,5].map(d=>`<option ${q.difficulty==d?"selected":""}>${d}</option>`).join("")}</select></div>
-      <div><label>رابط صورة (اختياري)</label><input id="qI${i}" dir="ltr" value="${esc(q.image_url)}"></div></div>
+      <div><label>رابط صورة (اختياري)</label><input id="qI${i}" dir="ltr" value="${esc(q.image_url)}"><input type="file" accept="image/*,.pdf" onchange="upFile(${i},this)" style="margin-top:6px"></div></div>
       <div class="grid3"><div><label>الوحدة</label><input id="qU${i}" value="${esc(q.unit)}"></div>
       <div><label>الموضوع</label><input id="qTp${i}" value="${esc(q.topic)}"></div></div>
       ${q.qtype!=="written"?`<label>الخيارات (حدد الصحيح)</label>`+q.options.map((o,j)=>`<div style="display:flex;gap:6px;margin:4px 0"><input type="${q.qtype==="multi"?"checkbox":"radio"}" name="qc${i}" ${o.correct?"checked":""} onchange="BQ[${i}].options[${j}].correct=this.checked${q.qtype==="multi"?"":";fixRadio("+i+","+j+")"}" style="width:24px;flex:none"><input value="${esc(o.text)}" oninput="BQ[${i}].options[${j}].text=this.value" placeholder="خيار ${j+1}"></div>`).join("")+`<button class="btn btn-secondary btn-sm" onclick="BQ[${i}].options.push({text:'',correct:false});drawBQ()">إضافة خيار</button>`:""}
@@ -544,6 +552,10 @@ function drawBQ(){
 function fixRadio(i,j){BQ[i].options.forEach((o,k)=>o.correct=k===j)}
 function bAdd(t){BQ.push(blankQ(t));BQ[BQ.length-1]._open=true;drawBQ()}
 function bMove(i,d){const t=BQ[i];BQ[i]=BQ[i+d];BQ[i+d]=t;drawBQ()}
+let DRAGI=null;
+function bDrag(e,i){DRAGI=i}
+function bDrop(e,i){e.preventDefault();if(DRAGI===null||DRAGI===i)return;const t=BQ.splice(DRAGI,1)[0];BQ.splice(i,0,t);DRAGI=null;drawBQ()}
+function bDup(i){const c=JSON.parse(JSON.stringify(BQ[i]));c.bank_id=null;delete c.link_id;delete c._open;BQ.splice(i+1,0,c);drawBQ();toast("تم نسخ السؤال")}
 function bDel(i){const q=BQ[i];if(q.link_id)REMOVED.push(q.link_id);BQ.splice(i,1);drawBQ()}
 function bEdit(i){BQ[i]._open=true;drawBQ()}
 function bSave(i){
@@ -576,6 +588,16 @@ async function bRandom(){
   sh.forEach(x=>BQ.push({bank_id:x.id,qtype:x.qtype,text:x.text,mark:x.mark,explanation:x.explanation||"",image_url:x.image_url||"",subject:x.subject,unit:x.unit||"",topic:x.topic||"",difficulty:x.difficulty,options:(x.question_options||[]).map(o=>({text:o.text,correct:o.is_correct}))}));
   drawBQ();toast("تمت إضافة "+sh.length+" سؤالا عشوائيا");
 }
+async function upFile(i,input){
+  const f=input.files[0];if(!f)return;
+  toast("جار رفع الملف...");
+  const safe=f.name.replace(/[^a-zA-Z0-9._-]/g,"_");
+  const path=ME.id+"/"+Date.now()+"_"+safe;
+  const {error}=await SB.storage.from("question-files").upload(path,f);
+  if(error){toast("فشل الرفع: "+error.message);return}
+  const {data}=SB.storage.from("question-files").getPublicUrl(path);
+  BQ[i].image_url=data.publicUrl;const el=$("qI"+i);if(el)el.value=data.publicUrl;toast("تم الرفع بنجاح");
+}
 async function shaHex(s){const b=await crypto.subtle.digest("SHA-256",new TextEncoder().encode(s));return[...new Uint8Array(b)].map(x=>x.toString(16).padStart(2,"0")).join("")}
 async function saveExam(publish){
   const title=$("fTitle").value.trim(),subject=$("fSubject").value.trim()||"عام";
@@ -592,12 +614,15 @@ async function saveExam(publish){
     show_result_immediately:$("fShow").value==="1",allow_review:$("fRev").value==="1",
     show_review_after_close:$("fRevC").value==="1",shuffle_questions:$("fShQ").value==="1",
     shuffle_options:$("fShO").value==="1",allow_back_navigation:$("fBack").value==="1",
-    audience:"all",status:publish?"published":(EDITEX?EDITEX.status:"draft"),created_by:ME.id};
+    audience:$("fAud").value,status:publish?"published":(EDITEX?EDITEX.status:"draft"),created_by:ME.id};
   if(code)payload.access_code_hash=await shaHex(code);
   let examId;
   if(EDITEX){await SB.from("exams").update(payload).eq("id",EDITEX.id);examId=EDITEX.id;
     for(const lid of REMOVED)await SB.from("exam_questions").delete().eq("exam_id",examId).eq("question_id",lid);
   }else{const {data,error}=await SB.from("exams").insert(payload).select().single();if(error){$("bMsg").innerHTML='<div class="alert-bad">'+error.message+"</div>";return}examId=data.id}
+  const gName=$("fGroup").value.trim(),gCode=$("fGroupCode").value.trim();
+  await SB.from("exam_access").delete().eq("exam_id",examId);
+  if(payload.audience==="groups"&&gName)await SB.from("exam_access").insert({exam_id:examId,group_name:gName,access_code_hash:gCode?await shaHex(gCode):null});
   let pos=EDITEX?1000:0;
   for(const q of BQ){
     if(q.bank_id&&q.link_id)continue;
@@ -620,7 +645,8 @@ async function saveExam(publish){
 async function editExam(id){
   const {data:e}=await SB.from("exams").select("*").eq("id",id).single();
   const {data:links}=await SB.from("exam_questions").select("*,question_bank(*,question_options(*))").eq("exam_id",id).order("position");
-  EDITEX=e;REMOVED=[];BQ=(links||[]).map(l=>({link_id:l.question_id,bank_id:l.question_id,qtype:l.question_bank.qtype,text:l.question_bank.text,mark:l.mark_override||l.question_bank.mark,explanation:l.question_bank.explanation||"",image_url:l.question_bank.image_url||"",subject:l.question_bank.subject,unit:l.question_bank.unit||"",topic:l.question_bank.topic||"",difficulty:l.question_bank.difficulty,options:(l.question_bank.question_options||[]).map(o=>({text:o.text,correct:o.is_correct}))}));
+  const {data:acc}=await SB.from("exam_access").select("*").eq("exam_id",id).limit(1);
+  EDITEX=e;EDITEX._acc=acc&&acc[0]?acc[0]:null;REMOVED=[];BQ=(links||[]).map(l=>({link_id:l.question_id,bank_id:l.question_id,qtype:l.question_bank.qtype,text:l.question_bank.text,mark:l.mark_override||l.question_bank.mark,explanation:l.question_bank.explanation||"",image_url:l.question_bank.image_url||"",subject:l.question_bank.subject,unit:l.question_bank.unit||"",topic:l.question_bank.topic||"",difficulty:l.question_bank.difficulty,options:(l.question_bank.question_options||[]).map(o=>({text:o.text,correct:o.is_correct}))}));
   viewAdmin("builder");
 }
 
