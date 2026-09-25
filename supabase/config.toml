@@ -1,0 +1,23 @@
+[functions.start-attempt]
+enabled = true
+verify_jwt = true
+
+[functions.save-answer]
+enabled = true
+verify_jwt = true
+
+[functions.submit-attempt]
+enabled = true
+verify_jwt = true
+
+[functions.grade-item]
+enabled = true
+verify_jwt = true
+
+[functions.complete-grading]
+enabled = true
+verify_jwt = true
+
+[functions.publish-result]
+enabled = true
+verify_jwt = true
