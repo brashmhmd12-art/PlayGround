@@ -15,9 +15,15 @@ export async function caller(req: Request) {
   const db = adminClient();
   const { data, error } = await db.auth.getUser(jwt);
   if (error || !data.user) return { user: null, error: "invalid token" };
-  const { data: prof } = await db.from("profiles").select("id,role,is_active")
+  const { data: prof } = await db.from("profiles").select("id,role,is_active,forced_logout_at")
     .eq("id", data.user.id).maybeSingle();
   if (!prof || !prof.is_active) return { user: null, error: "inactive account" };
+  // forced logout (logout-from-all-devices): any session signed in before
+  // forced_logout_at is rejected on EVERY backend action.
+  if (prof.forced_logout_at && data.user.last_sign_in_at &&
+      new Date(prof.forced_logout_at) > new Date(data.user.last_sign_in_at)) {
+    return { user: null, error: "session revoked by admin" };
+  }
   return { user: { id: data.user.id, role: prof.role }, error: null };
 }
 
