@@ -1,0 +1,21 @@
+[Unit]
+Description=MOHAMMAD ABRASH OS (personal command center)
+After=network.target
+
+[Service]
+Type=simple
+User=abrash
+WorkingDirectory=/opt/abrash-os
+EnvironmentFile=/etc/abrash-os.env
+ExecStart=/usr/bin/node server/server.js
+Restart=always
+RestartSec=5
+# Hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/abrash-os/server/data /opt/abrash-os/backups
+
+[Install]
+WantedBy=multi-user.target

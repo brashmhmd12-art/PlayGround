@@ -1,0 +1,11 @@
+import {Store} from '../store.js';import {escapeHTML} from '../core.js';import {toast,empty} from '../ui.js';
+const CATS=['Programming','Cybersecurity','AI','Engineering','Business','Finance','Books','Courses','Ideas'];
+export function render(el){el.innerHTML=`<div class="between"><h2 style="margin:0">📚 ABRASH KNOWLEDGE BASE</h2><button class="btn primary sm" id="kNew">＋ معرفة</button></div>
+  <div class="toolbar"><input id="kS" placeholder="بحث…"><select id="kC"><option value="">كل التصنيفات</option>${CATS.map(c=>`<option>${c}</option>`).join('')}</select></div><div class="grid g2" id="kL"></div>`;
+  const draw=()=>{const s=el.querySelector('#kS').value,c=el.querySelector('#kC').value;let arr=Store.col('knowledge');if(c)arr=arr.filter(x=>x.cat===c);if(s)arr=arr.filter(x=>(x.title+x.body).includes(s));
+    el.querySelector('#kL').innerHTML=arr.map(k=>{const linked=Store.col('notes').filter(n=>!n.deleted&&(n.tags||[]).some(t=>(k.tags||[]).includes(t)));return `<div class="card"><h3>${escapeHTML(k.title)} <span class="tag">${escapeHTML(k.cat||'')}</span></h3><div class="muted">${escapeHTML((k.body||'').slice(0,160))}</div><div>${(k.tags||[]).map(x=>`<span class="tag">${escapeHTML(x)}</span>`).join('')}</div><div class="muted">مرتبط: ${linked.length} ملاحظات · ${escapeHTML(k.src||'')}</div><div class="row" style="margin-top:8px"><button class="btn sm" data-e="${k.id}">تحرير</button><button class="btn sm danger" data-d="${k.id}">حذف</button></div></div>`}).join('')||empty('أضف أول ما تتعلمه — Cybersecurity / AI / …');
+    el.querySelectorAll('[data-d]').forEach(b=>b.onclick=()=>{Store.remove('knowledge',b.dataset.d);draw()});
+    el.querySelectorAll('[data-e]').forEach(b=>b.onclick=()=>{const k=Store.col('knowledge').find(x=>x.id===b.dataset.e);const v=prompt('نص المعرفة',k.body||'');if(v!=null){Store.update('knowledge',k.id,{body:v});draw()}})};
+  el.querySelector('#kNew').onclick=()=>{const title=prompt('العنوان:');if(!title)return;const cat=prompt('التصنيف: '+CATS.join(','),'Programming')||'Ideas';Store.push('knowledge',{title:title.slice(0,100),body:'',cat,tags:[],src:''});Store.audit('kb_create',{});draw()};
+  el.querySelector('#kS').oninput=draw;el.querySelector('#kC').onchange=draw;draw();
+}
