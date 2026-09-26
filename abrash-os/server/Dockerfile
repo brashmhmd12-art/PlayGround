@@ -2,7 +2,7 @@
 FROM node:22-alpine
 RUN addgroup -S app && adduser -S app -G app
 WORKDIR /app
-COPY index.html manifest.webmanifest icon.svg sw.js ./
+COPY index.html manifest.webmanifest sw.js icon.svg logo.png ./
 COPY css/ ./css/
 COPY js/ ./js/
 COPY server/*.js server/*.sql ./server/
