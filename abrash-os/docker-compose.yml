@@ -1,0 +1,46 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: server/Dockerfile
+    container_name: abrash-os
+    restart: unless-stopped
+    env_file:
+      - ./deploy/abrash-os.env
+    volumes:
+      - abrash-data:/app/server/data
+      - ./backups:/app/backups
+    networks:
+      - abrash
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3001/healthz"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+
+  caddy:
+    image: caddy:2-alpine
+    container_name: abrash-caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    environment:
+      DOMAIN: ${DOMAIN:-localhost}
+    networks:
+      - abrash
+    depends_on:
+      app:
+        condition: service_healthy
+
+volumes:
+  abrash-data:
+  caddy-data:
+  caddy-config:
+
+networks:
+  abrash:

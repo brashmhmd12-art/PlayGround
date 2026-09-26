@@ -1,0 +1,9 @@
+import {Store} from '../store.js';import {escapeHTML} from '../core.js';import {Auth} from '../auth.js';
+export function render(el){const me=Auth.user()||{u:'—'};const s=Store.get('settings',{});
+  el.innerHTML=`<div class="card" style="text-align:center"><img id="pImg" style="width:90px;height:90px;border-radius:50%;background:linear-gradient(135deg,#7c5cff,#22d3ee)" src="${escapeHTML(s.photo||'')}"><h2>محمد ابراش · ${escapeHTML(me.u)}</h2><p class="muted">${escapeHTML(s.about||'باني أنظمتي الرقمية — أمن · مشاريع · معرفة')}</p>
+  <div class="row" style="justify-content:center"><label class="btn sm">📷 صورة<input type="file" id="pUp" hidden accept="image/*"></label><button class="btn sm" id="pEdit">تعديل النبذة</button></div></div>
+  <div class="grid g3" style="margin-top:12px"><div class="card"><h3>🚀 مشاريعي</h3><div class="stat">${Store.col('projects').length}</div></div><div class="card"><h3>📚 معرفتي</h3><div class="stat">${Store.col('knowledge').length}</div></div><div class="card"><h3>✅ مهام منجزة</h3><div class="stat">${Store.col('tasks').filter(x=>x.done).length}</div></div></div>
+  <div class="card" style="margin-top:12px"><h3>⚡ مهاراتي</h3><div>${(s.skills||['Cybersecurity','Programming','AI']).map(x=>`<span class="tag">${escapeHTML(x)}</span>`).join(' ')}</div><h3>🎯 أهدافي</h3><div class="list">${Store.col('goals').map(g=>`<div class="item">${escapeHTML(g.title)} — ${g.progress||0}%</div>`).join('')||'—'}</div></div>`;
+  el.querySelector('#pUp').onchange=e=>{const f=e.target.files[0];const r=new FileReader();r.onload=()=>{const st=Store.get('settings',{});st.photo=r.result;Store.set('settings',st);render(el)};r.readAsDataURL(f)};
+  el.querySelector('#pEdit').onclick=()=>{const v=prompt('نبذة عنك:',Store.get('settings',{}).about||'');if(v!=null){const st=Store.get('settings',{});st.about=v;Store.set('settings',st);render(el)}};
+}

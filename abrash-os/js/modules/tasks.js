@@ -1,0 +1,16 @@
+import {Store} from '../store.js';import {escapeHTML,fmtD} from '../core.js';import {toast,empty} from '../ui.js';import {runRecurring} from './recurring.js';
+export function render(el){const spawned=runRecurring();if(spawned)toast(`🔁 ${spawned} مهام متكررة جديدة`);el.innerHTML=`<div class="between"><h2 style="margin:0">⚙ TASK ENGINE</h2><button class="btn primary sm" id="tNew">＋ مهمة</button></div>
+  <div class="toolbar"><input id="tS" placeholder="بحث…"><select id="tP"><option value="">كل الأولويات</option><option>P0</option><option>P1</option><option>P2</option><option>P3</option></select><select id="tPr"><option value="">كل المشاريع</option>${Store.col('projects').map(p=>`<option value="${p.id}">${escapeHTML(p.name)}</option>`).join('')}</select></div><div class="list" id="tL"></div>`;
+  const draw=()=>{const s=el.querySelector('#tS').value,p=el.querySelector('#tP').value,pr=el.querySelector('#tPr').value;
+    let arr=Store.col('tasks');if(s)arr=arr.filter(x=>x.title.includes(s));if(p)arr=arr.filter(x=>x.priority===p);if(pr)arr=arr.filter(x=>x.projectId===pr);
+    const open=arr.filter(x=>!x.done),done=arr.filter(x=>x.done);
+    el.querySelector('#tL').innerHTML=`<div class="muted">مفتوحة ${open.length} · مكتملة ${done.length}</div>`+[...open,...done].map(x=>{const subs=x.subs||[];const pc=subs.length?Math.round(subs.filter(y=>y.done).length/subs.length*100):(x.done?100:0);
+    return `<div class="item"><input type="checkbox" data-c="${x.id}" ${x.done?'checked':''} style="width:auto"><span><b>${escapeHTML(x.title)}</b> <span class="pill">${escapeHTML(x.priority||'P2')}</span> ${x.recurring?`<span class="tag">🔁 ${escapeHTML(x.recurring)}</span>`:''} ${x.due?`<span class="pill">⏰ ${escapeHTML(x.due)}</span>`:''} ${x.projectId?`<span class="tag">${escapeHTML(Store.col('projects').find(p=>p.id===x.projectId)?.name||'مشروع')}</span>`:''}<div class="bar" style="min-width:140px"><i style="width:${pc}%"></i></div></span><span style="margin-inline-start:auto" class="row"><button class="btn sm" data-s="${x.id}">＋ subtask</button><button class="btn sm danger" data-d="${x.id}">✕</button></span></div>`}).join('')||empty('لا مهام');
+    el.querySelectorAll('[data-c]').forEach(c=>c.onchange=()=>{Store.update('tasks',c.dataset.c,{done:c.checked});Store.audit('task_toggle',{id:c.dataset.c});draw()});
+    el.querySelectorAll('[data-d]').forEach(b=>b.onclick=()=>{Store.remove('tasks',b.dataset.d);draw()});
+    el.querySelectorAll('[data-s]').forEach(b=>b.onclick=()=>{const v=prompt('Subtask:');if(!v)return;const t2=Store.col('tasks').find(x=>x.id===b.dataset.s);Store.update('tasks',b.dataset.s,{subs:[...(t2.subs||[]),{t:v,done:false}]});draw()})};
+  el.querySelector('#tNew').onclick=()=>{const v=prompt('عنوان المهمة:');if(!v)return;const r=prompt('تكرار؟ (اتركه فارغًا / daily / weekly / monthly)','')||'';
+    const rec=['daily','weekly','monthly'].includes(r.trim())?r.trim():'';
+    Store.push('tasks',{title:v.slice(0,120),priority:'P1',done:false,due:rec?new Date().toISOString().slice(0,10):'',projectId:'',recurring:rec||undefined,nextDue:rec?new Date().toISOString().slice(0,10):undefined});Store.audit('task_create',{});draw();toast('أُنشئت ✓')};
+  el.querySelector('#tS').oninput=draw;el.querySelector('#tP').onchange=draw;el.querySelector('#tPr').onchange=draw;draw();
+}
