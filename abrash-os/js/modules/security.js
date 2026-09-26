@@ -6,6 +6,8 @@ export function render(el){const logins=Store.col('logins').slice(0,20),sess=Sto
     <p class="fine">TOTP حقيقي (RFC 6238) — امسح السر في Google Authenticator إدخالًا يدويًا.</p></div>
   <div class="card"><h3>🪪 Passkey <span class="pill">خادم فقط</span></h3><div class="muted" id="wnMsg">مفتاح مرور (بصمة/جهاز) — دخول بلا كلمة مرور عبر خادمك. يتطلب HTTPS أو localhost.</div>
     <div class="row" style="margin-top:8px"><button class="btn sm primary" id="wnReg">＋ تسجيل Passkey</button></div></div>
+  <div class="card"><h3>🔐 تغيير كلمة المرور</h3><div class="muted" id="pwMsg">12+ حرف · تُخزن PBKDF2 فقط</div>
+    <div class="row" style="margin-top:8px"><input id="pwOld" type="password" placeholder="الحالية" style="flex:1"><input id="pwNew" type="password" placeholder="الجديدة 12+" style="flex:1"><button class="btn sm primary" id="pwGo">تغيير</button></div></div>
   <div class="card"><h3>📱 الأجهزة الموثوقة (${devs.length})</h3>${devs.map(d=>`<div class="item">💻 ${escapeHTML(d.fp)} <span class="pill">${d.trusted?'موثوق':'جديد ⚠'}</span><button class="btn sm" data-tr="${d.fp}">${d.trusted?'إلغاء':'توثيق'}</button></div>`).join('')||'—'}</div>
   <div class="card"><h3>⚠ التنبيهات</h3>${fails.slice(0,4).map(f=>`<div class="item">⛔ فشل دخول: ${escapeHTML(f.user)} · ${fmtD(f.at||f.createdAt)}</div>`).join('')||'<div class="muted">لا تنبيهات — الوضع هادئ ✅</div>'}<button class="btn sm danger" id="sAll" style="margin-top:8px">تسجيل الخروج من كل الأجهزة</button></div></div>
   <div class="grid g2" style="margin-top:12px"><div class="card"><h3>🟢 الجلسات النشطة (${sess.length})</h3><div class="list">${sess.map(s=>`<div class="item">🌐 ${escapeHTML(s.dev||'')} · ${escapeHTML((s.ua||'').slice(0,40))} · IP:${escapeHTML(s.ip||'local')}<span style="margin-inline-start:auto"><button class="btn sm danger" data-rv="${s.id}">إلغاء</button></span></div>`).join('')||'—'}</div></div>
@@ -18,6 +20,9 @@ export function render(el){const logins=Store.col('logins').slice(0,20),sess=Sto
   el.querySelectorAll('[data-tr]').forEach(b=>b.onclick=()=>{const ds=Store.col('devices');const d=ds.find(x=>x.fp===b.dataset.tr);d.trusted=!d.trusted;Store.set('devices',ds);Store.audit('device_trust',{fp:d.fp,t:d.trusted});render(el)});
   el.querySelectorAll('[data-rv]').forEach(b=>b.onclick=()=>{Store.set('sessions',Store.col('sessions').filter(s=>s.id!==b.dataset.rv));Store.audit('session_revoke',{id:b.dataset.rv});toast('أُلغيت الجلسة');render(el)});
   el.querySelector('#sAll').onclick=async()=>{if(await confirmDlg('خروج شامل','إلغاء كل الجلسات؟')){Auth.logout(true);location.reload()}};
+  el.querySelector('#pwGo').onclick=async()=>{const m=el.querySelector('#pwMsg');
+    try{await Auth.changePassword(el.querySelector('#pwOld').value,el.querySelector('#pwNew').value);m.textContent='تغيّرت ✓';toast('كلمة المرور تغيّرت ✓')}
+    catch(e){m.textContent=e.message}};
   el.querySelector('#wnReg').onclick=async()=>{const m=el.querySelector('#wnMsg');
     try{const {wnOK,wnRegister}=await import('../webauthn.js');
       if(!wnOK())return m.textContent='متصفحك لا يدعم WebAuthn ⛔';

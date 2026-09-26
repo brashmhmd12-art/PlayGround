@@ -89,4 +89,46 @@ Store.set('syncBaseV2',sync.snapV2());
 Store.update('notes','a1',{tags:['x','mine'],updatedAt:'2024-02-01T00:00:00.000Z'});
 const ar=sync.mergeFields({notes:[{id:'a1',title:'T',tags:['x','theirs'],updatedAt:'2024-03-01T00:00:00.000Z'}]});
 ok('array conflict atomic',ar.conflicts.length===1&&ar.conflicts[0].field==='tags');
+// password change
+await Auth.signup('u3','u3@x.io','long-password-123');
+await Auth.login('u3','long-password-123',null);
+let badOld=false;try{await Auth.changePassword('wrong-old-pass!','new-long-password-456')}catch{badOld=true}
+ok('changePassword rejects bad old',badOld);
+let shortNew=false;try{await Auth.changePassword('long-password-123','short')}catch{shortNew=true}
+ok('changePassword rejects short',shortNew);
+ok('changePassword ok',await Auth.changePassword('long-password-123','new-long-password-456')===true);
+Auth.logout();
+let oldFails=false;try{await Auth.login('u3','long-password-123',null)}catch{oldFails=true}
+ok('old password dead',oldFails);Auth.logout();
+await Auth.login('u3','new-long-password-456',null);ok('new password works',!!Store.get('session',null));Auth.logout();
+// notes folders + wikilinks
+const nts=await import('../js/modules/notes.js');
+Store.set('notes',[{id:'n1',title:'Alpha',body:'see [[Beta]]',updatedAt:'2024-01-01T00:00:00.000Z'},{id:'n2',title:'Beta',body:'hello',folder:'work',updatedAt:'2024-01-01T00:00:00.000Z'}]);
+ok('parseLinks',JSON.stringify(nts.parseLinks('a [[Beta]] and [[Beta]]'))===JSON.stringify(['Beta']));
+ok('findBacklinks',nts.findBacklinks('n2').length===1&&nts.findBacklinks('n2')[0].id==='n1');
+ok('noteFolders',nts.noteFolders().includes('work'));
+const pv=nts.renderNotePreview('<script> [[Beta]]');
+ok('preview escapes + links',pv.includes('&lt;script&gt;')&&pv.includes('data-link="Beta"')&&!pv.includes('<script>'));
+// files fav/move/copy
+const fl=await import('../js/modules/files.js');
+Store.set('files',[{id:'f1',name:'a.png',kind:'image/png',size:10,folder:'A',tags:[],data:'data:image/png;base64,xx',versions:[]}]);
+ok('file fav toggle',fl.toggleFileFav('f1')===true&&Store.col('files')[0].fav===true);
+ok('file move',fl.moveFile('f1','B')&&Store.col('files')[0].folder==='B');
+const cp=fl.copyFile('f1');ok('file copy',!!cp&&cp.id!=='f1'&&cp.data==='data:image/png;base64,xx'&&Store.col('files').length===2);
+// tasks cats + reminders
+const tk=await import('../js/modules/tasks.js');
+Store.set('tasks',[{id:'t1',title:'x',due:'2024-01-02',done:false,cat:'home',updatedAt:'2024-01-01T00:00:00.000Z'},{id:'t2',title:'y',due:'2024-02-01',done:false,updatedAt:'2024-01-01T00:00:00.000Z'},{id:'t3',title:'z',due:'2024-01-01',done:true,updatedAt:'2024-01-01T00:00:00.000Z'}]);
+ok('dueSoon window',tk.dueSoon(2,'2024-01-01').map(x=>x.id).join(',')==='t1');
+ok('taskCats',tk.taskCats().includes('home'));
+// projects custom stages
+const pj=await import('../js/modules/projects.js');
+Store.set('settings',{});ok('stages default',pj.stages()[0]==='IDEA'&&pj.moveStage('IDEA',1)==='PLANNING'&&pj.moveStage('IDEA',-1)==='IDEA');
+Store.set('settings',{stages:['A','B']});ok('stages custom',pj.stages().length===2&&pj.moveStage('A',1)==='B'&&pj.moveStage('B',9)==='B');Store.set('settings',{});
+// dashboard widgets + duplicates + autobackup
+const db=await import('../js/modules/dashboard.js');
+Store.set('settings',{widgets:['tasks','notes']});ok('widget reorder',JSON.stringify(db.moveWidget('notes',-1))===JSON.stringify(['notes','tasks']));
+Store.set('notes',[{id:'d1',title:'Same',body:'xxx'},{id:'d2',title:'same',body:'xxx'},{id:'d3',title:'other',body:'yyy'}]);
+ok('findDuplicates',db.findDuplicates().length===1);
+const bk=await import('../js/modules/backup.js');
+ok('autobackup due',bk.shouldAutoBackup(null)===true&&bk.shouldAutoBackup('2020-01-01T00:00:00.000Z',new Date('2024-06-01T00:00:00Z').getTime())===true&&bk.shouldAutoBackup(new Date().toISOString())===false);
 console.log(`\n${pass} passed, ${fail} failed`);process.exit(fail?1:0);

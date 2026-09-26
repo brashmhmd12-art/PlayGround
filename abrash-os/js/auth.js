@@ -38,4 +38,10 @@ export const Auth={
   totpDisable(){const us=Store.col('users');const me=this.user();us.find(x=>x.u===me.u).totp=null;Store.set('users',us);Store.audit('2fa_disable',{u:me.u})},
   totpOn(){const me=this.user();return !!Store.col('users').find(x=>x.u===me.u)?.totp},
   async checkPass(p){const me=this.user();if(!me)return false;const u=Store.col('users').find(x=>x.u===me.u);return u&&verifyPass(p,u.salt,u.hash)},
+  async changePassword(oldP,newP){const me=this.user();if(!me)throw new Error('no session');
+    const us=Store.col('users');const u=us.find(x=>x.u===me.u);
+    if(!u||!await verifyPass(oldP,u.salt,u.hash))throw new Error('الحالية خاطئة');
+    if(String(newP||'').length<12)throw new Error('الجديدة 12+ حرف');
+    const {salt,hash}=await hashPass(newP);u.salt=salt;u.hash=hash;Store.set('users',us);
+    Store.audit('password_change',{u:me.u});return true},
 };

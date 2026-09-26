@@ -20,7 +20,7 @@ global search + natural commands («أنشئ مشروع باسم X»), local AI
 - PWA offline: `manifest.webmanifest` + `sw.js` (cache-first shell). Serve over
   http(s) — service workers don't run on `file://`.
 - Shortcuts: `Ctrl/⌘+K` palette (↑/↓ + Enter now work), `?` help, `g d/n/t/p/v`.
-- Tests: `node tests/smoke.mjs` (42) + `node tests/server.mjs` (22) + `node tests/webauthn.mjs` (11).
+- Tests: `node tests/smoke.mjs` (61) + `node tests/server.mjs` (22) + `node tests/webauthn.mjs` (11).
 
 ## Production server (zero-dep)
 ```bash
@@ -92,3 +92,15 @@ and `deploy/restore.sh` (hash-verified restore — tested round-trip).
 - UI: each conflicted field shows mine/theirs previews with per-field buttons.
 - Honest limits: no delete propagation (soft-delete flag merges as a field),
   arrays are atomic, base hashes live client-side (lost base → safe fallback).
+
+## Round 9 — remaining gaps closed
+- Password change (Security Center, old-verify + 12+ rule + audit).
+- Notes folders + `[[wikilinks]]` with outgoing/incoming links and click-through
+  (preview escapes HTML first, links injected after — XSS-safe by construction).
+- Files: favorites + move + copy + REAL preview (image/audio/video/PDF, data-URL
+  allowlisted to media/pdf only).
+- Tasks: categories + due-soon (≤48h) reminder badge/toast.
+- Projects: custom Kanban stages + people/links fields; destructive actions gated
+  by `can(role,·)`.
+- Dashboard widgets reorder (↑↓ persisted) + duplicate-note detection in suggestions.
+- Browser auto-backup daily (24h check, capped at 30) instead of first-run only.

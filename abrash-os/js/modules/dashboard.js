@@ -1,6 +1,15 @@
 import {Store} from '../store.js';import {escapeHTML,fmtD} from '../core.js';import {t} from '../i18n.js';
 const W={tasks:'المهام اليومية',projects:'المشاريع النشطة',notes:'آخر الملاحظات',files:'آخر الملفات',goals:'أهداف الشهر',activity:'نشاط الحساب'};
-export function render(el){const s=Store.get('settings',{widgets:[]});const ws=s.widgets?.length?s.widgets:Object.keys(W);
+export const widgetOrder=()=>{const w=Store.get('settings',{}).widgets;return Array.isArray(w)&&w.length?w:Object.keys(W)};
+export const moveWidget=(key,dir)=>{const w=widgetOrder().filter(k=>W[k]);const i=w.indexOf(key);if(i<0)return w;
+  const j=Math.min(w.length-1,Math.max(0,i+dir));[w[i],w[j]]=[w[j],w[i]];
+  const s=Store.get('settings',{});s.widgets=w;Store.set('settings',s);return w};
+export const findDuplicates=()=>{const seen=new Map(),dups=[];
+  for(const n of Store.col('notes')){if(n.deleted)continue;
+    const k=(n.title||'').trim().toLowerCase()+'|'+(n.body||'').trim().slice(0,200);
+    if(seen.has(k))dups.push(n);else seen.set(k,n)}
+  return dups};
+export function render(el){const s=Store.get('settings',{widgets:[]});const ws=widgetOrder().filter(k=>W[k]&&(s.widgets?.length?s.widgets.includes(k):true));
   const tasks=Store.col('tasks').filter(x=>!x.done);const projs=Store.col('projects').filter(p=>p.stage!=='COMPLETED');
   const notes=Store.col('notes').filter(n=>!n.deleted).slice(0,5);const files=Store.col('files').slice(0,5);
   const goals=Store.col('goals').slice(0,4);const audits=Store.col('audits').slice(0,6);
@@ -28,9 +37,16 @@ export function render(el){const s=Store.get('settings',{widgets:[]});const ws=s
   if(ws.includes('activity'))h+=card(W.activity,audits.map(a=>`<div class="item">🔹 ${escapeHTML(a.action)} <span class="muted" style="margin-inline-start:auto">${fmtD(a.at)}</span></div>`).join(''));
   const sugs=s.aiSuggest===false?'':suggest();
   g.innerHTML=h+(sugs?`<div class="card"><h3>🤖 اقتراحات قابلة للتعطيل</h3>${sugs}</div>`:'');
-  el.querySelector('#cwBtn').onclick=()=>{const cur=Store.get('settings',{});const box=document.createElement('div');box.innerHTML=Object.entries(W).map(([k,v])=>`<label style="display:flex;gap:8px;align-items:center"><input type="checkbox" data-k="${k}" ${(cur.widgets||[]).includes(k)?'checked':''} style="width:auto"> ${v}</label>`).join('');import('../ui.js').then(({confirmDlg})=>confirmDlg('تخصيص الواجهة',box).then(ok=>{if(!ok)return;cur.widgets=[...box.querySelectorAll('input:checked')].map(i=>i.dataset.k);Store.set('settings',cur);render(el)}))};
+  el.querySelector('#cwBtn').onclick=()=>{const cur=Store.get('settings',{});if(!cur.widgets?.length)cur.widgets=Object.keys(W);
+    const box=document.createElement('div');
+    const paint=()=>{box.innerHTML=cur.widgets.filter(k=>W[k]).map(k=>`<div class="item" data-w="${k}"><label style="display:flex;gap:8px;align-items:center;flex:1"><input type="checkbox" data-k="${k}" checked style="width:auto"> ${W[k]}</label><button class="btn sm" data-mv="-1">↑</button><button class="btn sm" data-mv="1">↓</button></div>`).join('');
+      box.querySelectorAll('[data-mv]').forEach(b=>b.onclick=()=>{const row=b.closest('[data-w]');const k=row.dataset.w;
+        const i=cur.widgets.indexOf(k);const j=Math.min(cur.widgets.length-1,Math.max(0,i+Number(b.dataset.mv)));
+        [cur.widgets[i],cur.widgets[j]]=[cur.widgets[j],cur.widgets[i]];paint()})};
+    paint();
+    import('../ui.js').then(({confirmDlg})=>confirmDlg('تخصيص الواجهة — حدد ورتّب',box).then(ok=>{if(!ok)return;cur.widgets=[...box.querySelectorAll('[data-w]')].filter(r=>r.querySelector('input:checked')).map(r=>r.dataset.w);Store.set('settings',cur);render(el)}))};
   const wx=Store.get('settings',{}).weather;
   if(wx?.on&&wx.lat&&wx.lon)fetch(`https://api.open-meteo.com/v1/forecast?latitude=${encodeURIComponent(wx.lat)}&longitude=${encodeURIComponent(wx.lon)}&current=temperature_2m,weather_code`).then(r=>r.json()).then(j=>{const b=el.querySelector('#wxBody');if(b)b.innerHTML=`<div class="stat">${j.current?.temperature_2m??'—'}°</div><div class="muted">كود ${j.current?.weather_code??'—'} · Open-Meteo</div>`}).catch(()=>{const b=el.querySelector('#wxBody');if(b)b.textContent='تعذر الجلب (offline؟)'});
   else{const b=el.querySelector('#wxBody');if(b)b.textContent='معطّل — فعّله من الإعدادات ⚙'}
 }
-function suggest(){const out=[];const stale=Store.col('projects').filter(p=>Date.now()-new Date(p.updatedAt).getTime()>7*864e5);if(stale.length)out.push(`مشاريع متوقفة منذ أسبوع: <b>${stale.length}</b> — راجع <a href="#/projects">المختبر</a>`);const late=Store.col('tasks').filter(x=>!x.done&&x.due&&new Date(x.due)<new Date());if(late.length)out.push(`مهام متأخرة: <b>${late.length}</b>`);const untagged=Store.col('notes').filter(n=>!n.deleted&&!(n.tags||[]).length);if(untagged.length)out.push(`ملاحظات بلا وسم تحتاج ترتيب: <b>${untagged.length}</b>`);return out.map(s=>`<div class="item">💡 ${s}</div>`).join('')}
+function suggest(){const out=[];const stale=Store.col('projects').filter(p=>Date.now()-new Date(p.updatedAt).getTime()>7*864e5);if(stale.length)out.push(`مشاريع متوقفة منذ أسبوع: <b>${stale.length}</b> — راجع <a href="#/projects">المختبر</a>`);const late=Store.col('tasks').filter(x=>!x.done&&x.due&&new Date(x.due)<new Date());if(late.length)out.push(`مهام متأخرة: <b>${late.length}</b>`);const untagged=Store.col('notes').filter(n=>!n.deleted&&!(n.tags||[]).length);if(untagged.length)out.push(`ملاحظات بلا وسم تحتاج ترتيب: <b>${untagged.length}</b>`);const dups=findDuplicates();if(dups.length)out.push(`معلومات مكررة محتملة: <b>${dups.length}</b> — راجع <a href="#/notes">الملاحظات</a>`);return out.map(s=>`<div class="item">💡 ${s}</div>`).join('')}
